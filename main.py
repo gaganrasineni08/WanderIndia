@@ -8,7 +8,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from groq import Groq 
 from dotenv import load_dotenv
-from utils import sanitize_input
+from utils import sanitize_input, sanitize_itinerary_html
 
 # Load the hidden environment variables from your .env file
 load_dotenv()
@@ -330,7 +330,8 @@ def generate_itinerary():
     itinerary_html = "<h2>Error generating itinerary</h2>"
     try:
         completion = groq_client.chat.completions.create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0.7)
-        itinerary_html = completion.choices[0].message.content.replace("```html\n", "").replace("```html", "").replace("```", "")
+        itinerary_html = sanitize_itinerary_html(
+            completion.choices[0].message.content.replace("```html\n", "").replace("```html", "").replace("```", ""))
     except Exception as e: print(f"❌ [Groq Error] {e}")
 
     found = unsplash_images(f"{destination} india landscape", count=2)
@@ -372,7 +373,7 @@ def revisit_trip():
             session['current_trip'] = {
                 "source": t['source'], "destination": t['destination'], "created_at": created_at
             }
-            return render_template('itinerary.html', destination=t['destination'], source=t['source'], images=t.get('images', []), itinerary_html=t['itinerary_html'], geoapify_key=GEOAPIFY_KEY)
+            return render_template('itinerary.html', destination=t['destination'], source=t['source'], images=t.get('images', []), itinerary_html=sanitize_itinerary_html(t['itinerary_html']), geoapify_key=GEOAPIFY_KEY)  # trips saved before sanitising
             
     return redirect(url_for('history'))
 

@@ -323,3 +323,34 @@ def test_fallback_places_respect_the_exclusion_list_whatever_the_case(monkeypatc
     options = main.generate_three_options("Hyderabad", "10000", "Hills", ["jaipur", "MUNNAR "])
     assert [o["destination"] for o in options] == ["Rishikesh", "Udaipur", "Gokarna"]
     assert main.place_key("  Leh   Ladakh , India") == "leh ladakh"
+
+
+def test_itinerary_html_keeps_layout_and_drops_scripts():
+    from utils import sanitize_itinerary_html
+
+    good = ('<div class="day-container" style="margin-bottom: 30px;"><h2 style="color: #60a5fa;">Day 1: Forts</h2>'
+            '<ul class="itinerary-list"><li><strong>🌅 9 AM - Amer Fort</strong><p>Go early.</p>'
+            '<span>Cost: ₹200</span></li></ul><hr style="border: 0;"></div>')
+    assert sanitize_itinerary_html(good) == good
+    bad = ('<h2 onclick="steal()">Day 1</h2><script>fetch("/x?c="+document.cookie)</script>'
+           '<img src=x onerror="alert(1)"><a href="javascript:alert(1)">tap</a>'
+           '<p style="background:url(https://evil/x)">Lunch &amp; <b>dosa</b></p><style>body{display:none}</style>')
+    out = sanitize_itinerary_html(bad)
+    assert out == "<h2>Day 1</h2>tap<p>Lunch &amp; <b>dosa</b></p>", out
+    assert sanitize_itinerary_html(None) == ""
+
+
+def test_generated_itinerary_is_sanitised(client, monkeypatch, tmp_path):
+    import main
+
+    reply = '<div><h2>Day 1</h2><script>alert(1)</script><p onmouseover="x()">Walk</p></div>'
+    monkeypatch.setattr(main, "groq_client", _fake_groq(reply))
+    monkeypatch.setattr(main, "unsplash_images", lambda *a, **k: [])
+    monkeypatch.setattr(main, "DATABASE_FILE", str(tmp_path / "history.json"))
+    with client.session_transaction() as sess:
+        sess["logged_in"] = True
+        sess["user_email"] = "a@b.c"
+        sess["current_trip"] = {"source": "Hyderabad", "start_date": "2026-12-20", "end_date": "2026-12-21"}
+    page = client.post("/generate_itinerary", data={"selected_destination": "Hampi"}).get_data(as_text=True)
+    assert "<p>Walk</p>" in page and "alert(1)" not in page and "onmouseover" not in page
+    assert "alert(1)" not in main.load_trips()[0]["itinerary_html"]

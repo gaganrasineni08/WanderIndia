@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -60,14 +61,21 @@ def load_trips():
         return []
     return trips if isinstance(trips, list) else []
 
+# Flask serves requests on several threads. Two trips saved at once each read the file, added
+# their own trip and wrote it back, so the later write dropped the other trip (and both wrote
+# the same .tmp file at the same time). One save at a time.
+_save_lock = threading.Lock()
+
+
 def save_trip(trip_data):
-    trips = load_trips()
-    trips.append(trip_data)
-    # Write to a temp file and swap it in, so a crash mid-write can't leave half a file.
-    tmp = DATABASE_FILE + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(trips, f, indent=4)
-    os.replace(tmp, DATABASE_FILE)
+    with _save_lock:
+        trips = load_trips()
+        trips.append(trip_data)
+        # Write to a temp file and swap it in, so a crash mid-write can't leave half a file.
+        tmp = DATABASE_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(trips, f, indent=4)
+        os.replace(tmp, DATABASE_FILE)
 
 def get_user_trips(email):
     all_trips = load_trips()

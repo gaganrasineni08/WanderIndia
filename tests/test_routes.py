@@ -354,3 +354,26 @@ def test_generated_itinerary_is_sanitised(client, monkeypatch, tmp_path):
     page = client.post("/generate_itinerary", data={"selected_destination": "Hampi"}).get_data(as_text=True)
     assert "<p>Walk</p>" in page and "alert(1)" not in page and "onmouseover" not in page
     assert "alert(1)" not in main.load_trips()[0]["itinerary_html"]
+
+
+def test_trips_saved_at_the_same_time_are_all_kept(tmp_path, monkeypatch):
+    """Concurrent requests each read, append and rewrite the file; none may be lost."""
+    import threading
+    import main
+
+    monkeypatch.setattr(main, "DATABASE_FILE", str(tmp_path / "trips.json"))
+    real_load = main.load_trips
+
+    def slow_load():  # widen the read-then-write window the way a busy disk would
+        trips = real_load()
+        threading.Event().wait(0.002)
+        return trips
+
+    monkeypatch.setattr(main, "load_trips", slow_load)
+    threads = [threading.Thread(target=main.save_trip, args=({"user_email": "a@b.c", "n": i},))
+               for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(t["n"] for t in real_load()) == list(range(20))

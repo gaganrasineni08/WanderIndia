@@ -377,3 +377,19 @@ def test_trips_saved_at_the_same_time_are_all_kept(tmp_path, monkeypatch):
     for t in threads:
         t.join()
     assert sorted(t["n"] for t in real_load()) == list(range(20))
+
+
+def test_each_place_keeps_its_own_pitch_when_one_is_missing(monkeypatch):
+    """With WHY missing for the first place, every later place used to get the previous place's pitch."""
+    import main
+
+    reply = ("DESTINATION: Hampi\nWEATHER: Climate: Dry | Temp: 20°C to 30°C\n"
+             + _block("Goa") + "    " + _block("Ooty").replace("\n", "\n    "))
+    monkeypatch.setattr(main, "groq_client", _fake_groq(reply))
+    monkeypatch.setattr(main, "unsplash_images", lambda *a, **k: [])
+    options = main.generate_three_options("Hyderabad", "10000", "Heritage", [])
+    assert [o["destination"] for o in options] == ["Hampi", "Goa", "Ooty"]
+    assert options[0]["pitch"].startswith("✨ Vibe: An incredible journey")  # the generic pitch
+    assert options[0]["weather"] == "Climate: Dry | Temp: 20°C to 30°C"
+    assert options[1]["pitch"] == "✨ Vibe: Goa vibe • 🏛️ Must-See: fort • 🍛 Local Bite: dosa"
+    assert options[2]["pitch"].startswith("✨ Vibe: Ooty vibe")  # indented reply

@@ -120,6 +120,31 @@ def place_key(name):
     return " ".join(str(name or "").split(",")[0].split()).lower()
 
 
+def parse_options(text):
+    """[(destination, [why lines], weather)] from the model's reply, one entry per DESTINATION.
+
+    Each destination's WHY and WEATHER are read from its own block. They used to be three
+    separate lists matched up by position, so when the model left out one place's WHY, every
+    later place got the pitch written for the one before it. Indented lines (the prompt
+    itself is indented) are fine too."""
+    out = []
+    for block in re.split(r"^[ \t]*DESTINATION:", text, flags=re.M)[1:]:
+        lines = [ln.strip() for ln in block.splitlines()]
+        destination, why, weather, section = lines[0], [], "", None
+        for ln in lines[1:]:
+            if ln.startswith("WHY:"):
+                section, ln = "why", ln[4:].strip()
+            elif ln.startswith("WEATHER:"):
+                section, weather = "weather", ln[8:].strip()
+                continue
+            if ln and section == "why":
+                why.append(ln)
+            elif ln and section == "weather":
+                weather = f"{weather} {ln}".strip()
+        out.append((destination, why, weather))
+    return out
+
+
 def generate_three_options(source, budget, vibe, excluded_list):
     excluded_text = ", ".join(excluded_list) if excluded_list else "None"
     
@@ -146,25 +171,23 @@ def generate_three_options(source, budget, vibe, excluded_list):
         )
         clean_text = completion.choices[0].message.content.replace("*", "")
         
-        destinations = re.findall(r"DESTINATION:\s*(.*?)(?:\n|$)", clean_text)
-        whys = re.findall(r"WHY:\s*(.*?)(?=\nWEATHER:|\nDESTINATION:|$)", clean_text, re.DOTALL)
-        weathers = re.findall(r"WEATHER:\s*(.*?)(?=\nDESTINATION:|$)", clean_text, re.DOTALL)
-        
+        parsed = parse_options(clean_text)
+
         # The model doesn't always follow "DO NOT suggest": on "Show me others" it may offer a
         # place it has already shown, or the same place twice. Those are dropped here, and the
         # fallback list below fills any gap.
         seen = {place_key(d) for d in excluded_list}
-        for i in range(len(destinations)):
+        for destination, why, weather in parsed:
             if len(options) >= 3:
                 break
-            key = place_key(destinations[i])
+            key = place_key(destination)
             if not key or key in seen:
                 continue
             seen.add(key)
-            # 🎯 FIX: Changed \n to a clean bullet point separator instead of <br> to prevent raw HTML leaking!
-            pitch_text = whys[i].strip().replace('\n', ' • ') if i < len(whys) else "✨ Vibe: An incredible journey awaits. • 🏛️ Must-See: Explore the city. • 🍛 Local Bite: Street food."
-            weather_text = weathers[i].strip() if i < len(weathers) else "Pleasant"
-            options.append({"destination": destinations[i].strip(), "pitch": pitch_text, "cost": f"₹{budget}", "weather": weather_text})
+            # Lines joined with a bullet, not <br>, so no raw HTML leaks into the card.
+            pitch_text = " • ".join(why) if why else "✨ Vibe: An incredible journey awaits. • 🏛️ Must-See: Explore the city. • 🍛 Local Bite: Street food."
+            weather_text = weather or "Pleasant"
+            options.append({"destination": destination, "pitch": pitch_text, "cost": f"₹{budget}", "weather": weather_text})
     except Exception: pass
 
     if len(options) < 3:

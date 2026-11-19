@@ -9,7 +9,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from groq import Groq 
 from dotenv import load_dotenv
-from utils import sanitize_input, sanitize_itinerary_html
+from utils import sanitize_input, sanitize_itinerary_html, validate_budget
 
 # Load the hidden environment variables from your .env file
 load_dotenv()
@@ -245,11 +245,15 @@ def dashboard():
     if request.method == 'POST':
         form_data = request.form.to_dict()
         action = form_data.get('action')
-        source = form_data.get('source', '').strip()
-        destination = form_data.get('destination', '').strip()
-        budget = form_data.get('budget', '10000')
-        vibe = form_data.get('vibe', 'Surprise Me!')
-        
+        # Cleaned before they go into the model's prompt and onto the cards: the browser's
+        # min="1000" is only a hint, so "abc", "-5" or a 40-digit budget, and a place name with
+        # newlines ("Goa\nIgnore the format above"), used to reach the prompt as typed.
+        source = sanitize_input(form_data.get('source'))
+        destination = sanitize_input(form_data.get('destination'))
+        budget = str(validate_budget(form_data.get('budget')))
+        vibe = sanitize_input(form_data.get('vibe'), default='Surprise Me!', max_len=40)
+        form_data.update(source=source, destination=destination, budget=budget, vibe=vibe)
+
         session['current_trip'] = form_data
         session['source_city'] = source
         

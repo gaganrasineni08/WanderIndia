@@ -330,7 +330,10 @@ def trip_days(trip):
 def generate_itinerary():
     # Without a login the trip would be saved to history with no owner.
     if not session.get('logged_in'): return redirect(url_for('home'))
-    destination = request.form.get('selected_destination', 'Destination')
+    # The chosen card's name comes back from the browser and goes into the prompt and the saved
+    # trip, so it gets the same cleaning as the dashboard fields: a value with line breaks could
+    # add instructions of its own, and one of any length was stored in history as it came.
+    destination = sanitize_input(request.form.get('selected_destination'), 'Destination', max_len=40)
     trip_data = session.get('current_trip', {})
     source = trip_data.get('source', 'Bangalore')
     budget = trip_data.get('budget', '10000')

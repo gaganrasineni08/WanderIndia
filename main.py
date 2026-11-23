@@ -434,7 +434,10 @@ def parse_place_list(text, limit=MAX_PITSTOPS):
     with the numbers in it. Apostrophes were also stripped out of names ("Lion's" -> "Lions").
     """
     names, seen = [], set()
-    for part in re.split(r"[,\n;]+", text or ""):
+    # Split on commas, semicolons and newlines, and also before an inline "2." or "3)" marker,
+    # so a reply that numbers every place on one line ("1. Lonavala 2. Pune 3. Khandala") is not
+    # read as a single stop. The leading marker of the first item is stripped below.
+    for part in re.split(r"[,\n;]+|\s+(?=\d+[.)]\s)", text or ""):
         name = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", part)   # "1." / "2)" / "-" / "•"
         name = name.strip().strip('"“”`').strip()
         name = re.sub(r"^'|'$", "", name).strip().rstrip(".")

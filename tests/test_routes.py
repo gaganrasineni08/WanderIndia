@@ -296,6 +296,15 @@ def test_place_list_from_numbered_or_bulleted_lines():
     assert parse_place_list(reply) == ["Lonavala", "Khandala", "Karla Caves", "Imagica"]
 
 
+def test_place_list_from_one_line_of_numbered_names():
+    from main import parse_place_list
+
+    # Some models ignore "comma-separated" and put every numbered name on one line.
+    assert parse_place_list("1. Lonavala 2. Pune 3) Khandala") == ["Lonavala", "Pune", "Khandala"]
+    # A lone number inside a name (not a list marker) is left alone.
+    assert parse_place_list("Sector 17 Plaza, Elante Mall") == ["Sector 17 Plaza", "Elante Mall"]
+
+
 def test_place_list_is_capped_and_handles_nothing():
     from main import parse_place_list
 
